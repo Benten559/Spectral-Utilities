@@ -329,7 +329,7 @@ class HSI_Model:
 
         return [self.vineAvgRad[i]*stdRating / self.stdAvgRad[i] for i in range(zeroOffset, len(self.wv))]
 
-    def save_reflectance_segmented_cube_as_h5(self, save_path, stdRating: float = .99, zeroOffset: int = 0) -> bool:
+    def save_reflectance_segmented_cube_as_h5(self, save_path, stdRating: float = .99, zeroOffset: int = 0,extent = (0,1024,0,1024)) -> bool:
         """
         Saves a hypercube after application of pixels to reflectance
         """
@@ -341,11 +341,11 @@ class HSI_Model:
 
         reflCube = []
         for band in range(zeroOffset, len(self.wv)):
-            bandImg = self.hcube[:, :, band]
-            maskedBand = cv2.bitwise_and(bandImg, bandImg, mask=self.mask)
+            bandImg = self.hcube[extent[0]:extent[1], extent[2]:extent[3], band]
+            maskedBand = cv2.bitwise_and(bandImg, bandImg, mask=self.mask[extent[0]:extent[1], extent[2]:extent[3]])
             maskedRadBand = np.multiply(np.multiply(
                 maskedBand, self.gain[band]), stdRating)
-            reflBand = np.divide(maskedBand, self.stdAvgRad[band])
+            reflBand = np.divide(maskedRadBand, self.stdAvgRad[band])
             reflCube.append(reflBand)
         try:
             with h5py.File(f"{join(save_path,self.imageName)}.hdf5", "w") as f:
