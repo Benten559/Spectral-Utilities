@@ -106,8 +106,13 @@ class HSI_Model:
         """ Used to save the composite rgb image of HSI """
         cv2.imwrite(f"{join(path_save_dir,self.imageName)}.jpg", self.rgb)
 
-    def save_mask(self, path_save_dir):
-        cv2.imwrite(f"{join(path_save_dir,self.imageName)}.png", self.mask*255)
+    def save_mask(self, path_save_dir,which="vine"):
+        assert isdir(path_save_dir)
+
+        if which == "vine" and not self.mask is None:
+            cv2.imwrite(f"{join(path_save_dir,self.imageName)}.png", self.mask*255)
+        elif which == "std" and not self.stdMask is None:
+            cv2.imwrite(f"{join(path_save_dir,self.imageName)}.png",self.stdMask*255)
 
     def save_rgb_sxs_mask(self, path_save_dir,extent = (0,1024,0,1024)):
         """
