@@ -169,7 +169,7 @@ class HSI_Model:
                 stdLoc = circles[0, :][0]
 
                 mask_RemoveCalibrationStd = cv2.circle(img=mask_RemoveCalibrationStd, center=(
-                    stdLoc[0], stdLoc[1]+trim_offset), radius=55, color=(0, 0, 0), thickness=-1).astype(np.uint8)
+                    stdLoc[0]+trim_offsetX, stdLoc[1]+trim_offsetY), radius=55, color=(0, 0, 0), thickness=-1).astype(np.uint8)
 
                 self.mask = cv2.bitwise_and(
                     self.mask, self.mask, mask=mask_RemoveCalibrationStd)
