@@ -146,7 +146,7 @@ class HSI_Model:
             self.rgb = cv2.normalize(
                 self.rgb, None, alpha=1, beta=norm_max, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F).astype(np.uint8)
 
-    def remove_std_from_mask(self, yPixelOffset: int = 500):
+    def remove_std_from_mask(self,xPixelOffset=0, yPixelOffset: int = 500):
         """
         Assuming a circular standard in the bottom half of an image, this will remove those pixels (set them to 0) within the existing logical mask
         If the location of the standard is higher/lower on the frame, this new mask can be adjusted using the yPixelOffset parameter
@@ -156,21 +156,25 @@ class HSI_Model:
             print("Load a mask prior to trying to remove circular artifacts")
             return
         elif not self.kernelCenter is None:
-            self.set_mask_by_threshold(kernel_center=self.kernelCenter)
+            try:
+                self.set_mask_by_threshold(kernel_center=self.kernelCenter)
 
-        mask_RemoveCalibrationStd = np.ones(
-            (self.hcube.shape[0], self.hcube.shape[1]))
-        trim_offset = yPixelOffset
-        circles = cv2.HoughCircles(
-            self.sharp[trim_offset:, :], cv2.HOUGH_GRADIENT, 1, 32, param1=1, param2=24, minRadius=30, maxRadius=40)
-        circles = np.uint16(np.around(circles))
-        stdLoc = circles[0, :][0]
-        mask_RemoveCalibrationStd = cv2.circle(img=mask_RemoveCalibrationStd, center=(
-            stdLoc[0], stdLoc[1]+trim_offset), radius=55, color=(0, 0, 0), thickness=-1).astype(np.uint8)
+                mask_RemoveCalibrationStd = np.ones(
+                    (self.hcube.shape[0], self.hcube.shape[1]))
+                trim_offsetY = yPixelOffset
+                trim_offsetX = xPixelOffset
+                circles = cv2.HoughCircles(
+                    self.sharp[trim_offsetY:, trim_offsetX:], cv2.HOUGH_GRADIENT, 1, 32, param1=1, param2=24, minRadius=30, maxRadius=40)
+                circles = np.uint16(np.around(circles))
+                stdLoc = circles[0, :][0]
 
-        self.mask = cv2.bitwise_and(
-            self.mask, self.mask, mask=mask_RemoveCalibrationStd)
+                mask_RemoveCalibrationStd = cv2.circle(img=mask_RemoveCalibrationStd, center=(
+                    stdLoc[0], stdLoc[1]+trim_offset), radius=55, color=(0, 0, 0), thickness=-1).astype(np.uint8)
 
+                self.mask = cv2.bitwise_and(
+                    self.mask, self.mask, mask=mask_RemoveCalibrationStd)
+            except Exception as e:
+                raise Exception(f"Error occured during removal of circular standard\n {e}")
     def set_circular_std_pixel_mask(self, xPixelOffset:int = 0, yPixelOffset: int = 500):
         """
         Retains the pixel-location of the circular standard as a logical mask.
