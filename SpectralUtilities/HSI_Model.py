@@ -7,7 +7,7 @@ import cv2
 import h5py
 import matplotlib.pyplot as plt
 # sys.path.append("../Utilities")
-import HDRprocess
+from . import HDRprocess
 
 
 def norm(band):
