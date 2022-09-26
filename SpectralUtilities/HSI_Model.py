@@ -18,7 +18,7 @@ def norm(band):
 class HSI_Model:
     """ An object designed to house: Hypercube, wavelengths used, RGB image, logical mask """
 
-    def __init__(self, path_hcube: str, imgName: str, path_mask: str = None, dataset: str = None, norm_max: int = None) -> None:
+    def __init__(self, path_hcube: str, imgName: str, path_mask: str = None, dataset: str = None, norm_max: int = None, nav_file:str = None) -> None:
         """ 
         Properties will contain all relevant meta-data for HSI image. 
 
@@ -58,13 +58,9 @@ class HSI_Model:
         self.wv = envi_obj.bands.centers
         self.imageName = imgName
         
+        #setting an rgb
         if dataset is None:
-            print(
-                f"constructing composite image using wavelengths:{self.wv[73]}nm, {self.wv[14]}nm, {self.wv[6]}nm ")
-            r = envi_obj[:, :, 73]  # red
-            g = envi_obj[:, :, 14]  # green
-            b = envi_obj[:, :, 6]
-            self.rgb = cv2.merge([r, g, b])
+            print(f"RGB is not initialized")
         elif dataset == "berry" or dataset == "leaf":
             self.stdRating = .99
             print(
@@ -73,22 +69,31 @@ class HSI_Model:
             r = norm(envi_obj[:, :, 2])
             g = norm(envi_obj[:, :, 10])
             b = norm(envi_obj[:, :, 30])
-            self.rgb = cv2.merge([r, g, b])
-
-        if not norm_max is None:
+            self.rgb = cv2.merge([r, g, b])        
+        
+        #normalizing the rgb
+        if (not norm_max is None) and (self.rgb is not None) : 
             self.rgb = cv2.normalize(self.rgb, None, alpha=1, beta=norm_max,
                                      norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F).astype(np.uint8)
 
         # Assign properties:
         self.hcube = np.array(envi_obj)
 
+        # assigning a mask, by file or by rgb data
         if path_mask != None:
             if path_mask == "self":
                 self.set_mask_by_threshold()
             else:
                 self.load_mask(path_mask)
-        self.timeTaken = HDRprocess.get_time(path_hcube)
-        self.gain = HDRprocess.get_gain_array(path_hcube)
+
+        # pushbroom data has no gain data, TODO get time from new header
+        if (dataset is not None) and (dataset != 'pushbroom'):
+            self.timeTaken = HDRprocess.get_time(path_hcube)
+            self.gain = HDRprocess.get_gain_array(path_hcube)
+        
+        # assign gps from NAV file
+        if nav_file is not None:
+            self.latList , self.longList = HDRprocess.get_gpgga_from_nav(nav_file)
         print("HSI load complete...")
 
     def load_mask(self, path_mask):

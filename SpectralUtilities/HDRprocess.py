@@ -1,8 +1,10 @@
 from os import listdir
 from os.path import isfile,isdir, join
 from posixpath import splitext
+from typing import List, Sequence, Tuple
 import pandas as pd
 import numpy as np
+from .GPS_GPGGA import GPGGAParser
 
 
 """
@@ -84,8 +86,8 @@ def get_hdr_file_path(path):
     hdrFilename = [f for f in listdir(path) if f[-3:] == 'hdr'][0]
     return join(path,hdrFilename)
 
-def get_hdr_contents(hdrPath):
-    """" Opens the hdr file and returns all lines """
+def get_hdr_contents(hdrPath:str):
+    """" Opens the hdr, or any other text type, file and returns all lines """
     hdr = open(hdrPath,'r') #open the header file
     return hdr.readlines()
 
@@ -162,3 +164,35 @@ def get_gain_array(path):
     gains = gains.split('}')[0]
     gains = np.array(gains.split(',')).astype(np.float32)
     return gains
+
+def get_gpgga_from_nav(path:str) -> Tuple[np.ndarray,np.ndarray,np.ndarray] :
+    """
+    Given a .NAV file of GPGGA coordinates, parses through the lead lines to identify $GPGGA and extracts data for each one
+    
+    Returns:
+    --------
+        latList : Latitude list as np.ndarry
+        longList : Longitude list as np.ndarry 
+    """
+    if isfile(path) and path[-3:] == "nav":
+        gpsList = get_hdr_contents(path)
+        return extract_ll_lists(gpsList)
+    else : 
+        raise FileNotFoundError("NAV file does not exist")
+
+def extract_ll_lists(gpsList:List) -> Sequence[np.ndarray]:
+    """
+    UTILITY to formulate the relevant info from GPGGA text lines
+
+    Returns:
+    --------
+        latList : Latitude list as np.ndarry
+        longList : Longitude list as np.ndarry 
+    """
+    gpggaList = [coord for coord in gpsList if coord.find("GPGGA")!=-1] # raw list
+    gpsList = [GPGGAParser(coord) for coord in gpggaList]  # Parsed as objects
+    latLongAlt = [(gps.latitude,gps.longitude,gps.altitude) for gps in gpsList] # LLA tuple (lat,lon,alt)
+    latList = [lat[0] for lat in latLongAlt]
+    longList = [long[1] for long in latLongAlt]
+
+    return latList, longList
