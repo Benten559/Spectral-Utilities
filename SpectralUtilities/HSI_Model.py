@@ -18,7 +18,7 @@ def norm(band):
 class HSI_Model:
     """ An object designed to house: Hypercube, wavelengths used, RGB image, logical mask """
 
-    def __init__(self, path_hcube: str, imgName: str, path_mask: str = None, dataset: str = None, norm_max: int = None, nav_file:str = None) -> None:
+    def __init__(self, path_hcube: str, imgName: str, path_mask: str = None, dataset: str = None, norm_max: int = None, nav_file:str = None, load_data:bool = False) -> None:
         """ 
         Properties will contain all relevant meta-data for HSI image. 
 
@@ -54,7 +54,8 @@ class HSI_Model:
 
         print("loading hypercube...")
         envi_obj = envi.open(path_hcube)
-        envi_obj = envi_obj.load()
+        if load_data:
+            envi_obj = envi_obj.load()
         self.wv = envi_obj.bands.centers
         self.imageName = imgName
         
@@ -77,7 +78,10 @@ class HSI_Model:
                                      norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F).astype(np.uint8)
 
         # Assign properties:
-        self.hcube = np.array(envi_obj)
+        if load_data:
+            self.hcube = np.array(envi_obj)
+        else:
+            self.hcube = envi_obj
 
         # assigning a mask, by file or by rgb data
         if path_mask != None:
@@ -96,6 +100,14 @@ class HSI_Model:
             self.latList , self.longList = HDRprocess.get_gpgga_from_nav(nav_file)
         print("HSI load complete...")
 
+    def load_entire_image_data(self) -> None:
+        """
+        By default, no data is loaded into memory so that a memmap may be used. 
+        Commonly needed with BIL pushbroom files
+        If this is not necessary, call this method to conduct analysis on "hcube".  
+        """
+        assert isinstance(self.hcube,spectral.io.bilfile.BilFile) 
+        self.hcube = self.hcube.load()
     def load_mask(self, path_mask):
         """ Called on initialization, if a path to multi-class mask is provided to constructor. """
         if isfile(path_mask):
