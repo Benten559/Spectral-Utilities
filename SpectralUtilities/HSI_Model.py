@@ -98,6 +98,13 @@ class HSI_Model:
         # assign gps from NAV file
         if nav_file is not None:
             self.latList , self.longList = HDRprocess.get_gpgga_from_nav(nav_file)
+        else:
+            try:
+                rawGPS = HDRprocess.grab_raw_coords(path_hcube)
+                self.latList = [HDRprocess.extract_coordinate(x)[0] for x in rawGPS]
+                self.longList = [HDRprocess.extract_coordinate(x)[1] for x in rawGPS]
+            except Exception as e:
+                print(f"Error loading coordinates: \n{e}")
         print("HSI load complete...")
 
     def load_entire_image_data(self) -> None:
