@@ -6,7 +6,9 @@ import numpy as np
 import cv2
 import h5py
 import matplotlib.pyplot as plt
-# sys.path.append("../Utilities")
+import geopy
+import geopy.distance
+from osgeo import gdal, osr
 from . import HDRprocess
 
 
@@ -102,7 +104,7 @@ class HSI_Model:
             try:
                 rawGPS = HDRprocess.grab_raw_coords(path_hcube)
                 self.latList = [HDRprocess.extract_coordinate(x)[0] for x in rawGPS]
-                self.longList = [HDRprocess.extract_coordinate(x)[1] for x in rawGPS]
+                self.longList = [HDRprocess.extract_coordinate(x)[1]*-1 for x in rawGPS]
             except Exception as e:
                 print(f"Error loading coordinates: \n{e}")
         print("HSI load complete...")
@@ -387,3 +389,73 @@ class HSI_Model:
         except Exception as e:
             print(f"An issue occured while writing data to H5: {e}")
             return False
+
+    def georef_band(self, savePath:str,band:int, diagonalExtent:float, heading:int = 0, dOffset:int = 0,dOffsetBearing:int = 0, rot:bool = False) -> None:
+        """
+        Produce a georeferenced image and save to disk.
+        Provide a capture window in meters, and a 
+
+        Parameters:
+        -----------
+            savePath         (str)   : The directory location to save the output file
+            band             (int)   : What wavelength to perform this operation on, by index
+            diagonalExtent   (float) : The extent by which the capture frame covers in meters
+            heading          (int)   : The pygeo standard for bearing. In the case of North-up imagery, use default 0. 
+            dOffset          (int)   : For non-aerial imagery, this offset serves to place the point of capture with subject, default 0.
+            dOffsetBearing   (int)   : The direction for which to apply the offset to subject. [0:360]
+            rot              (bool)  : Decided whether to apply a rotation
+        """
+        # TODO:
+        #   Assert:: hcube is not none, band index within valid range, savePath exists
+        #   heading is not greater than 360, lat/long list is populated
+
+        # Get the image
+        bandImg = np.array(self.hcube[:,:,band])
+        if rot:
+            bandImg = np.rot90(bandImg)
+        
+        # Get the center point of image
+        imgCenter = geopy.Point(self.latList[0],self.longList[0])
+        
+        if dOffset > 0:
+            d = geopy.distance.distance(meters=dOffset)
+            imgCenter = d.destination(point=imgCenter,bearing=heading)
+        
+        # Get the edges for aspect ratio
+        d = geopy.distance.distance(meters= diagonalExtent/2)
+        topLeftPoint = d.destination(point = imgCenter, bearing = -45).format_decimal()
+        bottomRightPoint = d.destination(point = imgCenter, bearing = 135).format_decimal()
+
+        # Compute the resolution 
+        xs = []
+        ys = []
+        xs.append(topLeftPoint.split(',')[0])
+        xs.append(bottomRightPoint.split(',')[0])
+
+        ys.append(topLeftPoint.split(',')[1])
+        ys.append(bottomRightPoint.split(',')[1])
+
+        xmin = min(xs)
+        ymin = min(ys)
+        xmax = max(xs)
+        ymax = max(ys)
+
+        rows = bandImg.shape[0]
+        cols = bandImg.shape[1]
+        xres = (float(xmax) - float(xmin)) / float(rows)
+        yres = (float(ymax) - float(ymin)) / float(cols)
+
+        # bandImg.reshape(rows,cols)
+        # Make the transforamtion on the band, save as tif
+        sr = osr.SpatialReference()
+        sr.ImportFromEPSG(4326)
+        geotransform = (float(ymin), yres, 0, float(xmax), 0, xres)# (float(ymax), yres, 0, float(xmin), 0, xres)
+        driver = gdal.GetDriverByName("GTiff")
+        outdata = driver.Create(f'{savePath}\{self.imageName}_band{band}.tif',rows , cols, 1, gdal.GDT_UInt16)
+        outdata.SetGeoTransform(geotransform)
+        outdata.SetProjection(sr.ExportToWkt())
+        outdata.GetRasterBand(1).WriteArray(bandImg[:,:,0])
+        outdata.FlushCache()
+        outdata = None
+        print(f"Image saved: {savePath}/{self.imageName}.tif")
+        
