@@ -8,6 +8,7 @@ import h5py
 import matplotlib.pyplot as plt
 import geopy
 import geopy.distance
+from PIL import Image
 from osgeo import gdal, osr
 from . import HDRprocess
 
@@ -103,8 +104,9 @@ class HSI_Model:
         else:
             try:
                 rawGPS = HDRprocess.grab_raw_coords(path_hcube)
-                self.latList = [HDRprocess.extract_coordinate(x)[0] for x in rawGPS]
-                self.longList = [HDRprocess.extract_coordinate(x)[1]*-1 for x in rawGPS]
+                # For consistency, these single points will be named list, but otherwise its just one Lat/Long
+                self.latList = np.mean([HDRprocess.extract_coordinate(x)[0] for x in rawGPS])
+                self.longList = np.mean([HDRprocess.extract_coordinate(x)[1]*-1 for x in rawGPS])
             except Exception as e:
                 print(f"Error loading coordinates: \n{e}")
         print("HSI load complete...")
@@ -390,7 +392,7 @@ class HSI_Model:
             print(f"An issue occured while writing data to H5: {e}")
             return False
 
-    def georef_band(self, savePath:str,band:int, diagonalExtent:float, heading:int = 0, dOffset:int = 0,dOffsetBearing:int = 0, rot:bool = False) -> None:
+    def georef_band(self, savePath:str,band:int, diagonalExtent:float, heading:int = 0, dOffset:int = 0, rot:bool = False,rotAngle:int=0) -> None:
         """
         Produce a georeferenced image and save to disk.
         Provide a capture window in meters, and a 
@@ -400,22 +402,24 @@ class HSI_Model:
             savePath         (str)   : The directory location to save the output file
             band             (int)   : What wavelength to perform this operation on, by index
             diagonalExtent   (float) : The extent by which the capture frame covers in meters
-            heading          (int)   : The pygeo standard for bearing. In the case of North-up imagery, use default 0. 
+            heading          (int)   : The pygeo standard for bearing, used in image skew. In the case of North-up imagery, use default 0. 
             dOffset          (int)   : For non-aerial imagery, this offset serves to place the point of capture with subject, default 0.
             dOffsetBearing   (int)   : The direction for which to apply the offset to subject. [0:360]
-            rot              (bool)  : Decided whether to apply a rotation
         """
         # TODO:
         #   Assert:: hcube is not none, band index within valid range, savePath exists
         #   heading is not greater than 360, lat/long list is populated
-
+        
         # Get the image
-        bandImg = np.array(self.hcube[:,:,band])
-        if rot:
-            bandImg = np.rot90(bandImg)
+        if isinstance(self.hcube,np.ndarray):
+            bandImg = self.hcube[:,:,band]
+        else:
+            self.hcube.load()
+            bandImg = self.hcube.read_band(band)
+
         
         # Get the center point of image
-        imgCenter = geopy.Point(self.latList[0],self.longList[0])
+        imgCenter = geopy.Point(self.latList,self.longList)
         
         if dOffset > 0:
             d = geopy.distance.distance(meters=dOffset)
@@ -440,21 +444,32 @@ class HSI_Model:
         xmax = max(xs)
         ymax = max(ys)
 
-        rows = bandImg.shape[0]
-        cols = bandImg.shape[1]
+        rows = bandImg.shape[0]#bandImg.width
+        cols = bandImg.shape[1]#bandImg.height
         xres = (float(xmax) - float(xmin)) / float(rows)
         yres = (float(ymax) - float(ymin)) / float(cols)
 
-        # bandImg.reshape(rows,cols)
-        # Make the transforamtion on the band, save as tif
+        # Compute the pixel skew TODO: The math needs work
+        y_skew = np.sin(heading) * xres #* -1
+        # x_skew = np.cos(heading) * yres
+
+        # y_skew = yres * np.sin(heading)
+        x_skew = yres * np.cos(heading)
+
+        #             (
+        #     np.sqrt((topLeftPoint.latitude-bottomRightPoint.latitude)**2 + (topLeftPoint.longitude-bottomRightPoint.longitude)**2) /
+        #     (p1.GCPPixel - p2.GCPPixel)
+        # )
+
+        # Make the transformation on the band, save as tif
         sr = osr.SpatialReference()
         sr.ImportFromEPSG(4326)
-        geotransform = (float(ymin), yres, 0, float(xmax), 0, xres)# (float(ymax), yres, 0, float(xmin), 0, xres)
+        geotransform = (float(ymin), xres, 0 , float(xmax), y_skew, xres)
         driver = gdal.GetDriverByName("GTiff")
         outdata = driver.Create(f'{savePath}\{self.imageName}_band{band}.tif',rows , cols, 1, gdal.GDT_UInt16)
         outdata.SetGeoTransform(geotransform)
         outdata.SetProjection(sr.ExportToWkt())
-        outdata.GetRasterBand(1).WriteArray(bandImg[:,:,0])
+        outdata.GetRasterBand(1).WriteArray(bandImg)
         outdata.FlushCache()
         outdata = None
         print(f"Image saved: {savePath}/{self.imageName}.tif")
