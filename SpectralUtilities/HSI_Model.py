@@ -1,4 +1,5 @@
-# from genericpath import isfile
+from typing import Union
+import math
 from os.path import isfile, isdir, join
 from spectral import *
 import spectral.io.envi as envi
@@ -444,27 +445,20 @@ class HSI_Model:
         xmax = max(xs)
         ymax = max(ys)
 
-        rows = bandImg.shape[0]#bandImg.width
-        cols = bandImg.shape[1]#bandImg.height
+        rows = bandImg.shape[0]
+        cols = bandImg.shape[1]
         xres = (float(xmax) - float(xmin)) / float(rows)
         yres = (float(ymax) - float(ymin)) / float(cols)
 
         # Compute the pixel skew TODO: The math needs work
-        y_skew = np.sin(heading) * xres #* -1
-        # x_skew = np.cos(heading) * yres
-
-        # y_skew = yres * np.sin(heading)
-        x_skew = yres * np.cos(heading)
-
-        #             (
-        #     np.sqrt((topLeftPoint.latitude-bottomRightPoint.latitude)**2 + (topLeftPoint.longitude-bottomRightPoint.longitude)**2) /
-        #     (p1.GCPPixel - p2.GCPPixel)
-        # )
+        radHeading = self._deg_to_radian(heading)
+        y_skew = -1* np.sin(radHeading) * xres 
+        x_skew = yres * np.sin(radHeading)
 
         # Make the transformation on the band, save as tif
         sr = osr.SpatialReference()
         sr.ImportFromEPSG(4326)
-        geotransform = (float(ymin), xres, 0 , float(xmax), y_skew, xres)
+        geotransform =(float(ymin), np.cos(radHeading)*xres, y_skew , float(xmax), x_skew, np.cos(radHeading)*yres) #(float(ymin), xres, 0 , float(xmax), y_skew, xres)
         driver = gdal.GetDriverByName("GTiff")
         outdata = driver.Create(f'{savePath}\{self.imageName}_band{band}.tif',rows , cols, 1, gdal.GDT_UInt16)
         outdata.SetGeoTransform(geotransform)
@@ -472,5 +466,10 @@ class HSI_Model:
         outdata.GetRasterBand(1).WriteArray(bandImg)
         outdata.FlushCache()
         outdata = None
-        print(f"Image saved: {savePath}/{self.imageName}.tif")
+        print(f"Image saved: {savePath}/{self.imageName}_band{band}.tif")
         
+    def _deg_to_radian(self,deg:Union[int,float]) -> float:
+        """
+        Utility to convert degree inputs to radians for raster skew
+        """
+        return deg * math.pi/180
