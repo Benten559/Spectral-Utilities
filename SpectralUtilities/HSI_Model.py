@@ -429,7 +429,7 @@ class HSI_Model:
         # Get the edges for aspect ratio
         d = geopy.distance.distance(meters= diagonalExtent/2)
         topLeftPoint = d.destination(point = imgCenter, bearing = -45).format_decimal()
-        bottomRightPoint = d.destination(point = imgCenter, bearing = 135).format_decimal()
+        bottomRightPoint = d.destination(point = imgCenter, bearing = 135).format_decimal() #135
 
         # Compute the resolution 
         xs = []
@@ -458,7 +458,7 @@ class HSI_Model:
         # Make the transformation on the band, save as tif
         sr = osr.SpatialReference()
         sr.ImportFromEPSG(4326)
-        geotransform =(float(ymin), np.cos(radHeading)*xres, y_skew , float(xmax), x_skew, np.cos(radHeading)*yres) #(float(ymin), xres, 0 , float(xmax), y_skew, xres)
+        geotransform =(float(ymin), xres, 0 , float(xmax), y_skew, xres)#(float(ymin), np.cos(radHeading)*xres, y_skew , float(xmax), x_skew, np.cos(radHeading)*yres)
         driver = gdal.GetDriverByName("GTiff")
         outdata = driver.Create(f'{savePath}\{self.imageName}_band{band}.tif',rows , cols, 1, gdal.GDT_UInt16)
         outdata.SetGeoTransform(geotransform)
