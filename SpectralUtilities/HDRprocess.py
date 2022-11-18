@@ -27,9 +27,13 @@ def get_folder_list_from_root_dir(path_RootFolder, filter_out = None, not_std = 
     if filter_out is None and not_std is None:
         return [join(path_RootFolder,x) for x in listdir(path_RootFolder) if not(isfile(join(path_RootFolder,x)))]
     elif not_std: #The calibration standards are not of interest
-        return [join(path_RootFolder,x) for x in listdir(path_RootFolder) if x[-3:] != 'STD']
+        return [join(path_RootFolder,x) for x in listdir(path_RootFolder) if 'std' not in x.lower()]
     else : # grab the calibration standards only/ or a certain file extension
         return [join(path_RootFolder,x) for x in listdir(path_RootFolder) if x[-len(filter_out):] == filter_out]
+
+def get_capture_dirs(path_RootFolder:str):
+    return [join(path_RootFolder,x) for x in listdir(path_RootFolder) if 'capture' in x]
+
 
 def get_absolute_path_HDR_from_parent_path_and_exposure(path_parent,exposure = None):
     """ Takes the parent folder(HSI folder) and select exposure, returns the absolute path to the HDR of that exposure. No exposure? first found subdirectory """
