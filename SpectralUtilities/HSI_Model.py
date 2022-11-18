@@ -1,4 +1,5 @@
 from typing import Union
+import os
 import math
 from os.path import isfile, isdir, join
 from spectral import *
@@ -9,6 +10,8 @@ import h5py
 import matplotlib.pyplot as plt
 import geopy
 import geopy.distance
+import tifffile
+import pandas as pd
 from PIL import Image
 from osgeo import gdal, osr
 from . import HDRprocess
@@ -133,7 +136,9 @@ class HSI_Model:
 
     def save_rgb(self, path_save_dir):
         """ Used to save the composite rgb image of HSI """
-        cv2.imwrite(f"{join(path_save_dir,self.imageName)}.jpg", self.rgb)
+        savePath = join(path_save_dir,self.imageName)
+        cv2.imwrite(f"{savePath}.jpg", self.rgb)
+
 
     def save_mask(self, path_save_dir,which="vine"):
         assert isdir(path_save_dir)
@@ -467,9 +472,129 @@ class HSI_Model:
         outdata.FlushCache()
         outdata = None
         print(f"Image saved: {savePath}/{self.imageName}_band{band}.tif")
+
+    def georef_pushbroom_band(self, savePath:str,band:int, diagonalExtent:float,heading:int = 0, dOffset:int = 0, rot:bool = False) -> None:
+        """
+        Produce a georeferenced image and save to disk.
+        Quick and dirty f(x) to get the job done
+        TODO merge functionality with georef_band for single, cleaner interface 
+
+        Parameters:
+        -----------
+            savePath         (str)   : The directory location to save the output file
+            band             (int)   : What wavelength to perform this operation on, by index
+            diagonalExtent   (float) : The extent by which the capture frame covers in meters
+            heading          (int)   : The pygeo standard for bearing, used in image skew. In the case of North-up imagery, use default 0. 
+            dOffset          (int)   : For non-aerial imagery, this offset serves to place the point of capture with subject, default 0.
+            dOffsetBearing   (int)   : The direction for which to apply the offset to subject. [0:360]
+        """
+        # TODO:
+        #   Assert:: hcube is not none, band index within valid range, savePath exists
+        #   heading is not greater than 360, lat/long list is populated
+
+        # Get the image
+        if isinstance(self.hcube,np.ndarray):
+            bandImg = self.hcube[:,:,band]
+        else:
+            tifPath = self.save_tif(band=band,savePath=savePath,getPath=True,southUp=rot)
+            bandImg = tifffile.imread(tifPath)
+            os.remove(tifPath)
+
+        
+        # Get the center point of image
+        imgTieStart = geopy.Point(self.latList[0],self.longList[0])
+        imgTieEnd = geopy.Point(self.latList[-1],self.longList[-1])
+        
+        if dOffset > 0:
+            d = geopy.distance.distance(meters=dOffset)
+            imgTieStart = d.destination(point=imgTieStart,bearing=heading)
+            imgTieEnd = d.destination(point=imgTieEnd,bearing=heading)
+        
+        # Get the edges for aspect ratio
+        d = geopy.distance.distance(meters= diagonalExtent/2)
+        topLeftPoint = d.destination(point = imgTieStart, bearing = -45).format_decimal()
+        bottomRightPoint = d.destination(point = imgTieEnd, bearing = 135).format_decimal() #135
+
+        # Compute the resolution 
+        xs = []
+        ys = []
+        xs.append(topLeftPoint.split(',')[0])
+        xs.append(bottomRightPoint.split(',')[0])
+
+        ys.append(topLeftPoint.split(',')[1])
+        ys.append(bottomRightPoint.split(',')[1])
+
+        xmin = min(xs)
+        ymin = min(ys)
+        xmax = max(xs)
+        ymax = max(ys)
+        # blurredPixelOffset = 300
+        cols = 640
+        rows = bandImg.shape[1]
+
+        xres = (float(xmax) - float(xmin)) / float(cols)
+        yres = (float(ymax) - float(ymin)) / float(rows)
+
+        # Compute the pixel skew TODO: The math needs work
+        # radHeading = self._deg_to_radian(heading)
+        # y_skew = -1* np.sin(radHeading) * xres 
+        # x_skew = yres * np.sin(radHeading)
+
+        # Make the transformation on the band, save as tif
+        sr = osr.SpatialReference()
+        sr.ImportFromEPSG(4326)
+        geotransform = (float(ymin), yres, 0, float(xmax), 0, xres)# (float(ymax), yres, 0, float(xmin), 0, xres)
+        driver = gdal.GetDriverByName("GTiff")
+        outdata = driver.Create(tifPath,rows , cols, 1, gdal.GDT_UInt16)#f'{savePath}\{self.imageName}.tif'
+        outdata.SetGeoTransform(geotransform)
+        outdata.SetProjection(sr.ExportToWkt())
+
+        outdata.GetRasterBand(1).WriteArray(bandImg[:,:,0])
+        outdata.FlushCache()
+        outdata = None
+        print(f"Image saved: {savePath}/{self.imageName}_band{band}.tif")
         
     def _deg_to_radian(self,deg:Union[int,float]) -> float:
         """
         Utility to convert degree inputs to radians for raster skew
         """
         return deg * math.pi/180
+
+    def save_tif(self,band:int,savePath:str,getPath:bool = False,southUp:bool=False) -> Union[None,str]:
+        # TODO: make sure band in range
+        # TODO: make sure savePath exists
+        """
+        Saves a single band of the hypercube to disk as a tif file. 
+        As used largely in the case of pushbroom data, a 90 deg rotation is applied by default.
+        Handy for georeferencing images without loading all of hypercube to memory.
+
+        Parameters:
+        -----------
+            band (int) : Wavelength to use from hcube
+            savePath (str) : Location/directory of where to save the tif file
+            getPath (bool) : if set to true, will return the absolute save path used. Default False.
+            southUp (bool) : if set to true, will save the tif with inverse pixels. Default False.
+        """
+        if southUp:
+            img = np.flip(np.rot90(np.flipud(self.hcube[:,:,band])),0)
+        else:
+            img = np.rot90(self.hcube[:,:,band])
+        saveName = f"{join(savePath,self.imageName)}_band{band}.tif"
+        tifffile.imwrite(f"{saveName}", img)
+        if getPath:
+            return saveName
+        else:
+            print(f"Saved band: {band} as tif file:\n {saveName}")
+
+    def save_gps_csv(self,savePath:str) -> None:
+        """
+        Produces a csv of all gps points collected (single point in case of drone)
+
+        Parameters:
+        -----------
+            savePath (str) : Location/directory of where to save the csv to
+        """
+        locations = {"latitude":self.latList, "longitude":self.longList}
+        saveName = f"{join(savePath,self.imageName)}_NAV.csv"
+        df = pd.DataFrame(locations)
+        df.to_csv(saveName,index=False)
