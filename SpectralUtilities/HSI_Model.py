@@ -137,7 +137,7 @@ class HSI_Model:
     def save_rgb(self, path_save_dir):
         """ Used to save the composite rgb image of HSI """
         savePath = join(path_save_dir,self.imageName)
-        cv2.imwrite(f"{savePath}.jpg", self.rgb)
+        plt.imsave(f"{savePath}.png", self.rgb)
         print(f"RGB saved to: {savePath}")
 
 
@@ -171,12 +171,15 @@ class HSI_Model:
         plt.imsave(f"{join(path_save_dir,self.imageName)}.png",
                    np.hstack([self.rgb[:, :, 1], self.stdMask]))
 
-    def set_rgb_by_wv_index(self, r: int, g: int, b: int, norm_max: int = None) -> None:
+    def set_rgb_by_wv_index(self, r: int, g: int, b: int, norm_max: int = None,rot : bool = False) -> None:
         """Reset the auto-generated rgb manually by selecting the index of wavelengths, if no norm_max is specified then pixels will be decimals"""
         r = norm(self.hcube[:, :, r])
         g = norm(self.hcube[:, :, g])
         b = norm(self.hcube[:, :, b])
-        self.rgb = cv2.merge([r, g, b])
+        if rot:
+            self.rgb = np.rot90(cv2.merge([r,g,b]))
+        else:
+            self.rgb = cv2.merge([r, g, b])
         if not norm_max is None:
             self.rgb = cv2.normalize(
                 self.rgb, None, alpha=1, beta=norm_max, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F).astype(np.uint8)
