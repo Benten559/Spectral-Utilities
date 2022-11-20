@@ -507,7 +507,7 @@ class HSI_Model:
         
         # Get the center point of image
         imgTieStart = geopy.Point(self.latList[0],self.longList[0])
-        imgTieEnd = geopy.Point(self.latList[-1],self.longList[-1])
+        imgTieEnd = geopy.Point(self.latList[0],self.longList[-1])
         
         if dOffset > 0:
             d = geopy.distance.distance(meters=dOffset)
